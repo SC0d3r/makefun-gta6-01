@@ -1,141 +1,223 @@
-// Drawing only: the world's state and the current screen in, pixels out. The 1280x720 playfield
-// is scaled to fit the window and centred, the margin filled with the backdrop colour. Flat
-// rectangles and circles, canvas text for the HUD and the panels. Text that holds a number is
-// rebuilt only when the number changes, so a frame allocates nothing.
-import { FIELD, FONT, LIVES, PALETTE } from './config.js';
-import { KIND_COIN } from './world.js';
+// Renderer, golden-hour lighting, sky and the third-person camera rig. There is one render pass,
+// ACES tone mapping, shadowed warm sun, cool hemisphere fill and exponential fog that matches the
+// horizon colour, so distant towers read as haze rather than a hard edge.
 
-export const SCREEN_TITLE = 'title';
-export const SCREEN_PLAY = 'play';
-export const SCREEN_PAUSED = 'paused';
-export const SCREEN_OVER = 'over';
+import { PLAYER, CAR, RENDER } from './config.js';
 
-/** The panel's width; its height grows with its lines: room for the title, the lines and the prompt. */
-const PANEL = { width: 600, top: 134, line: 34, bottom: 70 };
-const LIFE_SIZE = 20;
-const LIFE_GAP = 8;
+const SUN_DIR = new THREE.Vector3(-0.66, 0.22, 0.72).normalize();
 
-function cachedLabel(prefix) {
-  let value = -1;
-  let text = '';
-  return function label(next) {
-    if (next !== value) {
-      value = next;
-      text = prefix + next;
-    }
-    return text;
-  };
+function makeSky() {
+  const material = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      sunDir: { value: SUN_DIR.clone() },
+      top: { value: new THREE.Color(0x2f7fa3) },
+      mid: { value: new THREE.Color(0x7fb7c4) },
+      horizon: { value: new THREE.Color(0xffb98a) },
+      low: { value: new THREE.Color(0xa8574c) },
+    },
+    vertexShader: `
+      varying vec3 vDir;
+      void main() {
+        vDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `
+      uniform vec3 sunDir;
+      uniform vec3 top; uniform vec3 mid; uniform vec3 horizon; uniform vec3 low;
+      varying vec3 vDir;
+      void main() {
+        vec3 d = normalize(vDir);
+        float h = clamp(d.y, -1.0, 1.0);
+        vec3 c = mix(horizon, mid, smoothstep(0.0, 0.22, h));
+        c = mix(c, top, smoothstep(0.18, 0.85, h));
+        c = mix(c, low, smoothstep(0.0, -0.18, h));
+        float sd = max(dot(d, normalize(sunDir)), 0.0);
+        c += vec3(1.0, 0.58, 0.22) * pow(sd, 320.0) * 1.35;
+        c += vec3(1.0, 0.49, 0.18) * pow(sd, 12.0) * 0.14;
+        c += vec3(0.9, 0.34, 0.42) * pow(max(0.0, 1.0 - abs(h)), 5.0) * 0.06;
+        gl_FragColor = vec4(c, 1.0);
+      }`,
+  });
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 20), material);
+  sky.frustumCulled = false;
+  sky.renderOrder = -10;
+  return sky;
 }
 
-export function createRenderer(canvas) {
-  const context = canvas.getContext('2d');
-  const view = { scale: 1, x: 0, y: 0 };
-  const scoreLabel = cachedLabel('Score ');
-  const levelLabel = cachedLabel('Level ');
-  const finalLabel = cachedLabel('Score ');
-  const bestLabel = cachedLabel('Best ');
+export function createGraphics(canvas) {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = RENDER.exposure;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(RENDER.fogColor);
+  scene.fog = new THREE.FogExp2(RENDER.fogColor, RENDER.fog);
+
+  const camera = new THREE.PerspectiveCamera(RENDER.fov, window.innerWidth / window.innerHeight, RENDER.near, RENDER.far);
+  scene.add(camera);
+
+  const sky = makeSky();
+  scene.add(sky);
+
+  const hemi = new THREE.HemisphereLight(RENDER.hemiSky, RENDER.hemiGround, RENDER.hemiIntensity);
+  scene.add(hemi);
+
+  const sun = new THREE.DirectionalLight(RENDER.sunColor, RENDER.sunIntensity);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  const half = RENDER.shadowSize / 2;
+  sun.shadow.camera.left = -half;
+  sun.shadow.camera.right = half;
+  sun.shadow.camera.top = half;
+  sun.shadow.camera.bottom = -half;
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 420;
+  sun.shadow.bias = -0.0005;
+  sun.shadow.normalBias = 0.03;
+  scene.add(sun);
+  scene.add(sun.target);
+
+  const rim = new THREE.DirectionalLight(0x6fb6d9, 0.24);
+  rim.position.set(120, 80, -160);
+  scene.add(rim);
 
   function resize() {
-    const ratio = window.devicePixelRatio || 1;
-    const width = Math.round(window.innerWidth * ratio);
-    const height = Math.round(window.innerHeight * ratio);
-    canvas.width = width;
-    canvas.height = height;
-    view.scale = Math.min(width / FIELD.width, height / FIELD.height);
-    view.x = (width - FIELD.width * view.scale) / 2;
-    view.y = (height - FIELD.height * view.scale) / 2;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+    renderer.setSize(width, height);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize);
+
+  function followSun(center) {
+    sun.position.copy(center).addScaledVector(SUN_DIR, 170);
+    sun.target.position.copy(center);
+    sun.target.updateMatrixWorld();
+    sky.position.set(center.x, 0, center.z);
   }
 
-  const fonts = new Map();
-  function text(value, x, y, size, color, align) {
-    if (!fonts.has(size)) fonts.set(size, `${size}px ${FONT}`);
-    context.font = fonts.get(size);
-    context.fillStyle = color;
-    context.textAlign = align;
-    context.fillText(value, x, y);
+  function render() {
+    renderer.render(scene, camera);
   }
 
-  function drawField(state) {
-    context.fillStyle = PALETTE.sky;
-    context.fillRect(0, 0, FIELD.width, FIELD.height);
-    context.fillStyle = PALETTE.ground;
-    context.fillRect(0, FIELD.groundY, FIELD.width, FIELD.height - FIELD.groundY);
+  return { renderer, scene, camera, sun, sky, resize, render, followSun, sunDir: SUN_DIR };
+}
 
-    const items = state.items;
-    for (let index = 0; index < items.length; index += 1) {
-      const item = items[index];
-      if (!item.active) continue;
-      if (item.kind === KIND_COIN) {
-        context.fillStyle = PALETTE.coin;
-        context.beginPath();
-        context.arc(item.x + item.width / 2, item.y + item.height / 2, item.width / 2, 0, Math.PI * 2);
-        context.fill();
-      } else {
-        context.fillStyle = PALETTE.block;
-        context.fillRect(item.x, item.y, item.width, item.height);
-      }
-    }
-
-    const player = state.player;
-    // Blink while invulnerable after a hit: hidden on every other tenth of a second.
-    if (player.invulnerable === 0 || Math.floor(player.invulnerable * 10) % 2 === 1) {
-      context.fillStyle = PALETTE.player;
-      context.fillRect(player.x, player.y, player.width, player.height);
+function rayBox(ox, oy, oz, dx, dy, dz, box, maxT) {
+  let tmin = 0;
+  let tmax = maxT;
+  const axes = [
+    [ox, dx, box.x - box.w / 2, box.x + box.w / 2],
+    [oy, dy, 0, box.h],
+    [oz, dz, box.z - box.d / 2, box.z + box.d / 2],
+  ];
+  for (const [origin, dir, lo, hi] of axes) {
+    if (Math.abs(dir) < 1e-7) {
+      if (origin < lo || origin > hi) return Infinity;
+    } else {
+      let t1 = (lo - origin) / dir;
+      let t2 = (hi - origin) / dir;
+      if (t1 > t2) { const swap = t1; t1 = t2; t2 = swap; }
+      if (t1 > tmin) tmin = t1;
+      if (t2 < tmax) tmax = t2;
+      if (tmin > tmax) return Infinity;
     }
   }
+  return tmin;
+}
 
-  function drawHud(state) {
-    context.textBaseline = 'top';
-    text(scoreLabel(state.score), 24, 20, 28, PALETTE.text, 'left');
-    text(levelLabel(state.level), FIELD.width / 2, 20, 28, PALETTE.text, 'center');
-    const firstLife = FIELD.width - 24 - LIVES * (LIFE_SIZE + LIFE_GAP) + LIFE_GAP;
-    text('Lives', firstLife - 12, 20, 28, PALETTE.text, 'right');
-    for (let life = 0; life < LIVES; life += 1) {
-      context.fillStyle = life < state.lives ? PALETTE.player : PALETTE.ground;
-      context.fillRect(firstLife + life * (LIFE_SIZE + LIFE_GAP), 24, LIFE_SIZE, LIFE_SIZE);
+/** Third-person camera with a smoothed arm, wall avoidance, speed pull-back and a cinematic override. */
+export function createCameraRig(graphics, colliders) {
+  const current = new THREE.Vector3(0, 4, 10);
+  const look = new THREE.Vector3();
+  const desired = new THREE.Vector3();
+  const target = new THREE.Vector3();
+  const shot = { on: false, pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 55 };
+  let first = true;
+
+  function safeArm(from, to) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dz = to.z - from.z;
+    const length = Math.hypot(dx, dy, dz) || 1;
+    let best = 1;
+    for (const box of colliders) {
+      const t = rayBox(from.x, from.y, from.z, dx / length, dy / length, dz / length, box, length);
+      if (t < length) best = Math.min(best, Math.max(0.12, (t - 0.3) / length));
     }
+    to.copy(from).addScaledVector(new THREE.Vector3(dx, dy, dz), best);
+    if (to.y < 0.7) to.y = 0.7;
   }
 
-  function drawPanel(title, lines, prompt) {
-    const height = PANEL.top + lines.length * PANEL.line + PANEL.bottom;
-    const x = (FIELD.width - PANEL.width) / 2;
-    const y = (FIELD.height - height) / 2;
-    context.fillStyle = PALETTE.panel;
-    context.fillRect(x, y, PANEL.width, height);
-    context.textBaseline = 'alphabetic';
-    text(title, FIELD.width / 2, y + 78, 48, PALETTE.text, 'center');
-    for (let index = 0; index < lines.length; index += 1) {
-      text(lines[index], FIELD.width / 2, y + PANEL.top + index * PANEL.line, 22, PALETTE.muted, 'center');
-    }
-    text(prompt, FIELD.width / 2, y + height - 40, 24, PALETTE.coin, 'center');
-  }
-
-  const TITLE_LINES = ['Dodge the red blocks. Catch the gold coins.', 'Move with ← → or A D.  Pause with P.', ''];
-  const PAUSED_LINES = ['The blocks will wait for you.'];
-  const OVER_LINES = ['', ''];
-
-  /** Paint one frame: the field, then the HUD or a panel for the screen the game is on. */
-  function draw(state, screen, best) {
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.fillStyle = PALETTE.backdrop;
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.setTransform(view.scale, 0, 0, view.scale, view.x, view.y);
-    drawField(state);
-    if (screen === SCREEN_TITLE) {
-      TITLE_LINES[2] = bestLabel(best);
-      drawPanel('Block Dodger', TITLE_LINES, 'Press Space or click to start');
+  function update(dt, player, mode, yaw, pitch, speed) {
+    if (shot.on) {
+      current.copy(shot.pos);
+      look.copy(shot.look);
+      graphics.camera.position.copy(current);
+      graphics.camera.lookAt(look);
+      graphics.camera.fov += (shot.fov - graphics.camera.fov) * Math.min(1, dt * 6);
+      graphics.camera.updateProjectionMatrix();
       return;
     }
-    drawHud(state);
-    if (screen === SCREEN_PAUSED) drawPanel('Paused', PAUSED_LINES, 'Press P to resume');
-    else if (screen === SCREEN_OVER) {
-      OVER_LINES[0] = finalLabel(state.score);
-      OVER_LINES[1] = bestLabel(best);
-      drawPanel('Game over', OVER_LINES, 'Press Space or click to play again');
+    const inCar = mode === 'car';
+    const arm = inCar ? CAR.arm : PLAYER.arm;
+    const clampedPitch = Math.max(PLAYER.pitchMin, Math.min(PLAYER.pitchMax, pitch));
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
+    const baseY = inCar ? player.y + 1.35 : player.y + PLAYER.shoulder;
+    const shoulder = inCar ? 0 : 0.42;
+    target.set(player.x + Math.cos(yaw) * shoulder, baseY, player.z - Math.sin(yaw) * shoulder);
+    if (inCar) target.z += fz * 0.6;
+    const back = arm * Math.cos(clampedPitch) + Math.min(4.8, speed * 0.075);
+    desired.set(target.x - fx * back, baseY + arm * Math.sin(clampedPitch) + (inCar ? 0.55 : 0), target.z - fz * back);
+    safeArm(target, desired);
+    const lookAhead = inCar ? CAR.lookAhead + speed * 0.22 : 0;
+    const targetLook = inCar
+      ? new THREE.Vector3(target.x + fx * lookAhead, baseY + 0.35, target.z + fz * lookAhead)
+      : new THREE.Vector3(target.x - fx * 1.3, baseY - 0.08, target.z - fz * 1.3);
+    if (first) {
+      current.copy(desired);
+      look.copy(targetLook);
+      first = false;
+    } else {
+      const k = 1 - Math.exp(-dt / PLAYER.lag);
+      const kFast = 1 - Math.exp(-dt / (inCar ? 0.075 : 0.1));
+      current.lerp(desired, kFast);
+      look.lerp(targetLook, k);
     }
+    graphics.camera.position.copy(current);
+    graphics.camera.lookAt(look);
+    const fov = inCar ? CAR.fov : PLAYER.fov;
+    graphics.camera.fov += (fov - graphics.camera.fov) * Math.min(1, dt * 5);
+    graphics.camera.updateProjectionMatrix();
   }
 
-  resize();
-  window.addEventListener('resize', resize);
-  return { draw };
+  function snap(player, mode, yaw, pitch) {
+    first = true;
+    update(0.016, player, mode, yaw, pitch, 0);
+    first = false;
+  }
+
+  function setShot(pos, targetPoint, fov = 55) {
+    shot.on = true;
+    shot.pos.set(pos[0], pos[1], pos[2]);
+    shot.look.set(targetPoint[0], targetPoint[1], targetPoint[2]);
+    shot.fov = fov;
+  }
+
+  function clearShot() {
+    shot.on = false;
+    first = true;
+  }
+
+  return { update, snap, setShot, clearShot, get position() { return current; } };
 }

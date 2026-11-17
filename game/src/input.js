@@ -1,53 +1,110 @@
-// Keyboard and pointer input. Held keys give a steering direction; one-shot presses (start or
-// restart, pause) are queued as bit flags and taken once by the loop, so a press between two
-// frames is never lost and never counted twice.
+// Keyboard, mouse and pointer lock. Held keys are read directly; one-shot presses (pause, use,
+// retry) are queued as bit flags so a press between frames is never lost. Mouse movement is
+// accumulated and consumed once per frame by the camera.
 
-export const ACTION_CONFIRM = 1;
-export const ACTION_PAUSE = 2;
+export const ACTION_PAUSE = 1;
+export const ACTION_INTERACT = 2;
+export const ACTION_SHOOT = 4;
+export const ACTION_JUMP = 8;
+export const ACTION_RETRY = 16;
+export const ACTION_ZOOM = 32;
 
-const LEFT = new Set(['ArrowLeft', 'KeyA']);
-const RIGHT = new Set(['ArrowRight', 'KeyD']);
-const CONFIRM = new Set(['Space', 'Enter']);
-const PAUSE = new Set(['KeyP', 'Escape']);
+const GAME_KEYS = new Set([
+  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+  'ShiftLeft', 'ShiftRight', 'Space', 'KeyF', 'KeyE', 'KeyR', 'KeyP', 'Escape',
+]);
 
-export function createInput(target) {
-  let left = false;
-  let right = false;
+export function createInput(canvas, options = {}) {
+  const held = new Set();
   let actions = 0;
+  let dx = 0;
+  let dy = 0;
+  let shootHeld = false;
+  let locked = false;
+  let enabled = true;
+
+  function changeLock(next) {
+    locked = next;
+    if (options.onLock) options.onLock(next);
+    if (!next) shootHeld = false;
+  }
 
   window.addEventListener('keydown', (event) => {
-    if (LEFT.has(event.code)) left = true;
-    else if (RIGHT.has(event.code)) right = true;
-    else if (CONFIRM.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_CONFIRM;
-    } else if (PAUSE.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_PAUSE;
-    } else return;
-    event.preventDefault();
+    if (GAME_KEYS.has(event.code)) event.preventDefault();
+    if (event.repeat) return;
+    held.add(event.code);
+    if (event.code === 'KeyP' || event.code === 'Escape') actions |= ACTION_PAUSE;
+    else if (event.code === 'KeyE' || event.code === 'KeyF') actions |= ACTION_INTERACT;
+    else if (event.code === 'KeyR') actions |= ACTION_RETRY;
+    else if (event.code === 'Space') actions |= ACTION_JUMP;
   });
-  window.addEventListener('keyup', (event) => {
-    if (LEFT.has(event.code)) left = false;
-    else if (RIGHT.has(event.code)) right = false;
-  });
-  // A key released while the tab is hidden never sends keyup: let go of everything on blur.
+  window.addEventListener('keyup', (event) => held.delete(event.code));
   window.addEventListener('blur', () => {
-    left = false;
-    right = false;
+    held.clear();
+    shootHeld = false;
+    if (locked) document.exitPointerLock?.();
   });
-  target.addEventListener('pointerdown', () => {
-    actions |= ACTION_CONFIRM;
+
+  canvas.addEventListener('pointerdown', (event) => {
+    if (!enabled) return;
+    if (!locked && event.button === 0) {
+      canvas.requestPointerLock?.();
+      return;
+    }
+    if (event.button === 0) {
+      shootHeld = true;
+      actions |= ACTION_SHOOT;
+    }
+  });
+  window.addEventListener('pointerup', (event) => {
+    if (event.button === 0) shootHeld = false;
+  });
+  document.addEventListener('mousemove', (event) => {
+    if (!locked) return;
+    dx += event.movementX || 0;
+    dy += event.movementY || 0;
+  });
+  document.addEventListener('wheel', (event) => {
+    if (locked) {
+      event.preventDefault();
+      actions |= ACTION_ZOOM;
+    }
+  }, { passive: false });
+  document.addEventListener('pointerlockchange', () => changeLock(document.pointerLockElement === canvas));
+  document.addEventListener('contextmenu', (event) => {
+    if (locked) event.preventDefault();
   });
 
   return {
-    /** -1 for left, 1 for right, 0 for neither or both. */
-    direction() {
-      return (right ? 1 : 0) - (left ? 1 : 0);
+    get locked() { return locked; },
+    get shooting() { return shootHeld; },
+    get handbrake() { return held.has('Space'); },
+    isDown(code) { return held.has(code); },
+    setEnabled(value) { enabled = value; if (!value) { held.clear(); shootHeld = false; } },
+    requestLock() {
+      if (!locked) return canvas.requestPointerLock?.();
+      return undefined;
     },
-    /** The one-shot presses since the last call, as ACTION_* flags. */
+    releaseLock() {
+      if (locked) document.exitPointerLock?.();
+    },
+    /** Forward/strafe in -1..1, from WASD or the arrow keys. */
+    move() {
+      const forward = (held.has('KeyW') || held.has('ArrowUp') ? 1 : 0) - (held.has('KeyS') || held.has('ArrowDown') ? 1 : 0);
+      const strafe = (held.has('KeyD') || held.has('ArrowRight') ? 1 : 0) - (held.has('KeyA') || held.has('ArrowLeft') ? 1 : 0);
+      return { forward, strafe, sprint: held.has('ShiftLeft') || held.has('ShiftRight') };
+    },
     takeActions() {
       const taken = actions;
       actions = 0;
       return taken;
+    },
+    /** Mouse movement since the previous call, in raw pixels. */
+    takeMouse() {
+      const out = { dx, dy };
+      dx = 0;
+      dy = 0;
+      return out;
     },
   };
 }

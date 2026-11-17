@@ -3,17 +3,107 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Block Dodger</title>
+<title>VELA CITY</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
-  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  :root { --cream:#f4e8d0; --coral:#ff6b5e; --cyan:#39d6e0; --gold:#ffc94a; --pink:#ff4fa3; --ink:#080d12; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; overflow:hidden; background:#0a1118; }
+  body { font-family: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--cream); }
+  #game { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; }
+  #hud { position:fixed; inset:0; pointer-events:none; user-select:none; z-index:2; }
+  #hud.intro #vitals, #hud.intro #minimapWrap, #hud.intro #banner, #hud.intro #cash,
+  #hud.intro #speedo, #hud.intro #ammo, #hud.intro #hint { visibility:hidden; }
+  #vitals { position:absolute; top:24px; left:24px; width:180px; filter:drop-shadow(0 2px 5px rgba(0,0,0,.55)); }
+  #vitals .label { display:flex; justify-content:space-between; font-size:9px; letter-spacing:.18em; font-weight:700; opacity:.85; margin-bottom:4px; }
+  .bar { height:12px; width:180px; background:rgba(6,10,15,.72); border:1px solid rgba(255,255,255,.12); overflow:hidden; border-radius:2px; }
+  .bar > i { display:block; height:100%; width:100%; transition:width .12s linear; }
+  #healthFill { background:linear-gradient(90deg,#ff5b4d,#ff8b6e); }
+  #armourBar { margin-top:6px; height:9px; }
+  #armourFill { background:linear-gradient(90deg,#22b8c9,#5fe9f0); width:60%; }
+  #minimapWrap { position:absolute; top:24px; right:24px; width:168px; filter:drop-shadow(0 4px 10px rgba(0,0,0,.6)); }
+  #stars { height:21px; display:flex; justify-content:center; gap:3px; margin-bottom:5px; }
+  .star { font-size:18px; line-height:20px; color:#353a40; text-shadow:0 1px 2px #000; transition:color .2s; }
+  .star.on { color:var(--gold); text-shadow:0 0 8px rgba(255,201,74,.8),0 1px 2px #000; }
+  #minimap { width:168px; height:168px; border-radius:50%; border:2px solid rgba(255,201,74,.75); background:#0b1418; display:block; box-shadow:inset 0 0 20px rgba(0,0,0,.8); }
+  #banner { position:absolute; top:22px; left:50%; transform:translateX(-50%); min-width:310px; max-width:520px; background:rgba(7,12,17,.76); border:1px solid rgba(255,201,74,.28); border-radius:999px; padding:8px 24px 9px; text-align:center; backdrop-filter:blur(7px); filter:drop-shadow(0 4px 12px rgba(0,0,0,.5)); transition:opacity .2s; }
+  #banner.hidden { opacity:0; }
+  #bannerTitle { font-size:10px; letter-spacing:.22em; font-weight:800; color:var(--gold); }
+  #bannerObjective { font-size:14px; letter-spacing:.02em; margin-top:2px; color:var(--cream); }
+  #bannerTimer { color:var(--cyan); font-variant-numeric:tabular-nums; font-weight:700; margin-left:8px; }
+  #cash { position:absolute; right:24px; bottom:24px; font-size:28px; font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:.03em; color:#eafff2; text-shadow:0 2px 7px rgba(0,0,0,.8); }
+  #speedo { position:absolute; right:26px; bottom:70px; width:150px; text-align:right; opacity:0; transition:opacity .15s; text-shadow:0 2px 6px rgba(0,0,0,.8); }
+  #speedo.on { opacity:1; }
+  #speedVal { font-size:32px; line-height:30px; font-weight:800; font-variant-numeric:tabular-nums; }
+  #speedo small { font-size:10px; letter-spacing:.18em; opacity:.78; margin-left:4px; }
+  #speedBar { height:4px; background:rgba(0,0,0,.5); margin-top:5px; border-radius:2px; overflow:hidden; }
+  #speedBar i { display:block; height:100%; width:0%; background:linear-gradient(90deg,var(--cyan),var(--gold),var(--coral)); }
+  #hint { position:absolute; left:24px; bottom:22px; font-size:11px; line-height:1.55; color:rgba(244,232,208,.78); text-shadow:0 1px 3px #000; }
+  #hint b { color:var(--gold); font-weight:700; }
+  #ammo { position:absolute; right:24px; bottom:57px; font-size:12px; letter-spacing:.1em; color:rgba(244,232,208,.8); opacity:0; text-shadow:0 1px 3px #000; }
+  #ammo.on { opacity:1; }
+  #toast { position:absolute; top:96px; left:50%; transform:translateX(-50%); background:rgba(255,79,163,.92); color:#fff; padding:7px 18px; border-radius:3px; font-size:12px; letter-spacing:.12em; font-weight:800; opacity:0; transition:opacity .25s; }
+  #toast.on { opacity:1; }
+  #overlay { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:radial-gradient(circle at 50% 45%,rgba(15,28,36,.42),rgba(3,7,10,.88)); pointer-events:auto; z-index:5; }
+  #overlay.on { display:flex; }
+  .card { min-width:340px; padding:30px 38px; background:rgba(8,14,20,.88); border:1px solid rgba(255,201,74,.3); box-shadow:0 18px 60px rgba(0,0,0,.65); text-align:center; backdrop-filter:blur(8px); }
+  .card h2 { margin:0 0 4px; font-size:30px; letter-spacing:.18em; font-weight:800; }
+  .card p { margin:0 0 20px; font-size:12px; letter-spacing:.14em; color:rgba(244,232,208,.62); }
+  .btn { pointer-events:auto; display:block; width:100%; margin:8px 0; padding:12px 20px; border:1px solid rgba(255,201,74,.45); background:rgba(255,201,74,.08); color:var(--cream); font:700 13px/1 system-ui,sans-serif; letter-spacing:.16em; cursor:pointer; transition:background .12s,color .12s; }
+  .btn:hover { background:var(--gold); color:#111; }
+  .btn.alt { border-color:rgba(57,214,224,.4); background:rgba(57,214,224,.06); }
+  .btn.alt:hover { background:var(--cyan); color:#071014; }
+  #title { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:linear-gradient(180deg,rgba(8,17,24,.58),rgba(8,13,18,.78) 62%,rgba(8,13,18,.93)); pointer-events:auto; z-index:6; }
+  #title.off { display:none; }
+  #title .eyebrow { font-size:11px; letter-spacing:.55em; color:var(--cyan); margin-bottom:14px; }
+  #title h1 { margin:0; font-size:clamp(54px,9vw,104px); line-height:.9; font-weight:900; letter-spacing:.07em; color:var(--cream); text-shadow:0 4px 40px rgba(255,107,94,.32); }
+  #title h1 span { color:var(--coral); }
+  #title .tag { margin:16px 0 30px; font-size:13px; letter-spacing:.16em; color:rgba(244,232,208,.72); text-align:center; max-width:420px; line-height:1.7; }
+  #title .btn { width:230px; }
+  #title .foot { margin-top:26px; font-size:10px; letter-spacing:.18em; color:rgba(244,232,208,.38); }
+  #wasted { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(72,3,8,.6); z-index:7; pointer-events:none; }
+  #wasted.on { display:flex; }
+  #wasted h2 { font-size:84px; letter-spacing:.24em; color:#ff5b4d; text-shadow:0 0 40px rgba(255,60,40,.8); font-weight:900; }
+  #error { position:fixed; left:0; right:0; bottom:0; display:none; background:rgba(120,10,16,.95); color:#fff; font:12px/1.5 ui-monospace,monospace; padding:10px 16px; white-space:pre-wrap; z-index:99; pointer-events:auto; }
 </style>
 </head>
 <body>
-<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
-<p id="status" role="status" aria-live="polite"></p>
+<canvas id="game" aria-label="VELA CITY, an open world crime game"></canvas>
+<div id="hud">
+  <div id="vitals">
+    <div class="label"><span>HEALTH</span><span id="healthText">100</span></div>
+    <div class="bar"><i id="healthFill"></i></div>
+    <div class="bar" id="armourBar"><i id="armourFill"></i></div>
+  </div>
+  <div id="minimapWrap">
+    <div id="stars"><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span></div>
+    <canvas id="minimap" width="336" height="336"></canvas>
+  </div>
+  <div id="banner" class="hidden"><div id="bannerTitle">COURIER RUN</div><div id="bannerObjective">—</div></div>
+  <div id="toast"></div>
+  <div id="speedo"><span id="speedVal">0</span><small>KM/H</small><div id="speedBar"><i></i></div></div>
+  <div id="ammo">PISTOL · <span id="ammoVal">12</span></div>
+  <div id="cash">$0</div>
+  <div id="hint"><b>WASD</b> move · <b>Mouse</b> look · <b>Shift</b> sprint · <b>Space</b> jump<br><b>F</b> enter/exit vehicle · <b>E</b> interact · <b>LMB</b> fire · <b>P</b> pause</div>
+  <div id="title">
+    <div class="eyebrow">A MARISOL SYNDICATE STORY</div>
+    <h1>VELA<span> CITY</span></h1>
+    <div class="tag">Rico Vela owes the Marisol syndicate. One last run across the city is the only way out.</div>
+    <button class="btn" id="newGame">NEW GAME</button>
+    <button class="btn alt" id="continueGame">CONTINUE</button>
+    <div class="foot">VELA COAST · GOLDEN HOUR</div>
+  </div>
+  <div id="overlay">
+    <div class="card">
+      <h2 id="overlayTitle">PAUSED</h2>
+      <p id="overlaySub">THE CITY CAN WAIT</p>
+      <button class="btn" id="resumeBtn">RESUME</button>
+      <button class="btn alt" id="restartBtn">RESTART</button>
+    </div>
+  </div>
+  <div id="wasted"><h2 id="wastedText">WASTED</h2></div>
+  <div id="error"></div>
+</div>
+<script src="./vendor/three.min.js"></script>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
