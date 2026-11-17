@@ -1,6 +1,7 @@
 // Renderer, golden-hour lighting, sky and the third-person camera rig. There is one render pass,
 // ACES tone mapping, shadowed warm sun, cool hemisphere fill and exponential fog that matches the
 // horizon colour, so distant towers read as haze rather than a hard edge.
+// A warm low sun and thick haze do most of the work on the skyline.
 
 import { PLAYER, CAR, RENDER } from './config.js';
 

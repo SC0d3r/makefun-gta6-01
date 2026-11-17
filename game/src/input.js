@@ -1,6 +1,7 @@
 // Keyboard, mouse and pointer lock. Held keys are read directly; one-shot presses (pause, use,
 // retry) are queued as bit flags so a press between frames is never lost. Mouse movement is
 // accumulated and consumed once per frame by the camera.
+// Every control feeds one action bitmask that the loop drains on each tick.
 
 export const ACTION_PAUSE = 1;
 export const ACTION_INTERACT = 2;

@@ -1,6 +1,7 @@
 // Boot, the one fixed-step loop, the game state and the wiring between city, player, traffic,
 // police, missions, HUD, audio and the screenshot presets. ?seed=N makes the whole city and its
 // inhabitants deterministic; ?shot=chase|street|drive|mission stages and freezes a real scene.
+// The clock is fixed, so driving and mission timing never drift apart.
 
 import { STEP, MAX_FRAME, PLAYER, WORLD, SAVE_KEY, SHOTS } from './config.js';
 import { createRng } from './rng.js';

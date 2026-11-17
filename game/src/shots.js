@@ -1,6 +1,7 @@
 // The four deterministic screenshot scenes. Each stages a real playable state, runs the fixed-step
 // simulation for a short burst so traffic, pedestrians and lights are alive, then plants a cinematic
 // camera and freezes so the capture is identical every time for the same seed.
+// Each preset name maps to a staged moment that outside tools can photograph.
 
 import { STEP } from './config.js';
 import { placeCar } from './vehicle.js';

@@ -1,5 +1,6 @@
 // Every tuning number, layout measurement and colour in one place. The city grid is a 5 by 5 set
 // of 46 m blocks with 14 m roads and 3 m sidewalks; all distances are metres and the sea lies south.
+// Tuning numbers gather here so the whole world can be retimed in one sweep.
 
 export const STEP = 1 / 60;
 export const MAX_FRAME = 0.25;

@@ -1,6 +1,7 @@
 // The player on foot: a simple box character with swinging limbs, camera-relative walking,
 // sprinting and jumping, circle-versus-box building collision, sea and dock limits, and a soft
 // contact shadow. The same character builder dresses pedestrians in traffic.js.
+// The swinging arms and legs are what sell the walking speed.
 
 import { PLAYER, WORLD } from './config.js';
 

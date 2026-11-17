@@ -1,6 +1,7 @@
 // Wanted level, pursuit driving, foot officers and gun combat. Crimes raise the heat, four police
 // cars answer (two patrol units already parked in the city and two responders staged off-screen),
 // officers deploy above two stars, and the level cools after thirty seconds out of sight.
+// Heat climbs with each crime and drains away once the streets go quiet.
 
 import { CAR, WANTED } from './config.js';
 import { createCar, driveCar, placeCar } from './vehicle.js';

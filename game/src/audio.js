@@ -1,6 +1,7 @@
 // WebAudio synthesis only: a filtered engine drone, a two-tone siren, gunshots from noise,
 // footsteps, UI clicks and a slow original three-chord pad. Nothing loads from the network and
 // nothing sounds until the player's first click or key press unlocks the context.
+// Every sound is built from oscillators, so the game ships no audio files.
 
 export function createAudio() {
   let ctx = null;

@@ -1,6 +1,7 @@
 // Twelve traffic cars on lane routes that slow for red lights, one another and the player, plus
 // sixteen pedestrians walking the sidewalk rings. Pedestrians sidestep the player and run when a
 // shot is fired or a car clips them.
+// Wandering cars and walkers give the streets a life of their own.
 
 import { CAR, GRID, WORLD, TRAFFIC } from './config.js';
 import { createCar, placeCar } from './vehicle.js';

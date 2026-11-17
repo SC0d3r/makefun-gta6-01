@@ -1,5 +1,6 @@
 // A small seeded random generator (mulberry32). The same seed always lays out the same city,
 // traffic, pedestrians and mission stops, which makes every screenshot preset reproducible.
+// A known seed also makes an odd bug repeatable on demand.
 
 export function createRng(seed) {
   let a = seed | 0;

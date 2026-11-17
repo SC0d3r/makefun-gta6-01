@@ -1,6 +1,7 @@
 // Cars: a shared box-and-cylinder model in four flavours, arcade driving with engine force,
 // steering, lateral grip and handbrake, building collision, and the visual bits the traffic and
 // police systems need (wheels, brake lights, flashing roof bars).
+// Handling stays loose and forgiving rather than physically correct.
 
 import { CAR } from './config.js';
 

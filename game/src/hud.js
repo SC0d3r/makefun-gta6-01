@@ -1,6 +1,7 @@
 // DOM and canvas HUD: health and armour, wanted stars, a north-up player-centred minimap, mission
 // banner with timer, cash and speedometer, controls hint, title, pause and wasted panels. Also the
 // dev error strip, which is hidden unless something actually throws.
+// The overlay only mirrors state outward; it never drives the simulation.
 
 import { CSS } from './config.js';
 

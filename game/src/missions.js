@@ -1,5 +1,6 @@
 // Courier Run: one mission state machine with a marker, objective text, a countdown, three drops,
 // cash rewards, failure and retry. The marker is a rotating gold diamond over a soft light beam.
+// Three drops on a countdown turn the courier job into a dash across town.
 
 import { MISSION } from './config.js';
 

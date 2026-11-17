@@ -2,6 +2,7 @@
 // awnings, lamps, palms, beach, marina and sea. The same call with the same seeded rng always builds
 // the same city. Returns pure data (colliders, mission points, traffic routes, signals) for the
 // simulation modules as well as the meshes.
+// Blocks, beach and boulevard are assembled once at load and then reused.
 
 import { GRID, WORLD, COLORS } from './config.js';
 
